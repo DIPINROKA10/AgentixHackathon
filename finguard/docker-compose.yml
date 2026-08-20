@@ -1,0 +1,41 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: finguard
+      POSTGRES_PASSWORD: finguard_secret
+      POSTGRES_DB: finguard
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finguard"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://finguard:finguard_secret@postgres:5432/finguard
+      DATASET_PATH: /app/data/PS_20174392719_1491204439457_log.csv
+    volumes:
+      - ../archive:/app/data
+      - ./backend/ml/models:/app/ml/models
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: >
+      sh -c "python -m ml.train &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+volumes:
+  pgdata:
